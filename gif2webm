@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Takes a gif, loops it to the length of the specified audio file and outputs a webm
+
+
+video="$1 -vf scale=300:-1" # gif scaled to 300px width, change accordingly
+audio="$2"
+title="$3"
+if [ -z "$4" ]; then
+    format="vp8"
+else
+    format="vp9"
+fi
+bitrate=256
+threads=4
+
+if [ -z "$1" ]  && [ -z "$2" ]; then
+    echo "gif2webm gif audio [title] [format]"
+else
+    if [ "$format" = "vp8" ]; then
+	ffmpeg -i ${video} -c:v libvpx -b:v 0 -auto-alt-ref 0 -crf 30 -pass 1 -an -f null /dev/null -threads ${threads} && \
+	ffmpeg -i ${audio} -ignore_loop 0 -i ${video} -shortest -c:v libvpx -b:v 0 -auto-alt-ref 0 -crf 30 -pass 2 -c:a libvorbis -threads ${threads} -metadata "title=$title" output.webm
+    else
+	ffmpeg -i ${video} -c:v libvpx-vp9 -b:v 0 -crf 30 -pass 1 -an -f null /dev/null -threads ${threads} && \
+	ffmpeg -i ${audio} -ignore_loop 0 -i ${video} -shortest -c:v libvpx-vp9 -b:v 0 -crf 30 -pass 2 -c:a libvorbis -threads ${threads} -metadata "title=$title" output.webm
+    fi
+fi

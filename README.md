@@ -1,2 +1,1 @@
-# scripts
-Miscellaneous bash scripts
+# Miscellaneous bash scripts

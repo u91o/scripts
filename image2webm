@@ -1,16 +1,22 @@
 #!/bin/bash
-
+#
+# Make webm with image (looped if possible) and audio file
+# Currently supported formats: static images, animated gifs
+#
+# https://trac.ffmpeg.org/wiki/Encode/VP8
+# https://www.webmproject.org/docs/encoder-parameters/
+# https://trac.ffmpeg.org/wiki/Encode/VP9
+# https://sites.google.com/a/webmproject.org/wiki/ffmpeg/vp9-encoding-guide
 
 VIDEO=
 AUDIO=
+B_V=0
+B_A=
+CRF=30
+ENC_V="vp9"
 OUTPUT=
-VIDEO_BITRATE=
-AUDIO_BITRATE=
-CRF=
-VIDEO_FORMAT="vp9"
-TITLE=
 SCALE=
-THREADS=4
+TITLE=
 
 
 usage() {
@@ -19,23 +25,22 @@ Usage:  image2webm [options] image audio
 
 Options:
  --ab <bitrate>		   Set audio bitrate.
- --vb <bitrate>		   Set video bitrate.
- --crf 			   Set CRF value between 4-63
- -f, --format={vp8|vp9}    Specify video format. Defaults to vp9.
+ --vb <bitrate>		   Set video bitrate. Defaults to CQ mode if unset.
+ --crf 			   Set CRF value between 4-63. Defaults to 30.
+ -e, --encoder={vp8|vp9}   Specify video encoder. Defaults to vp9.
  -o, --output=<file>       Place output into <file>. Defaults to placing
      	       		   <image>.webm in the current directory.
  -s, --scale=<size>	   Scale video to specified size.
-     	      		   For example,
 			       -s 320:420
 			   scales the output image to 320x420. Width and
 			   height values can also be replaced with -1 to keep
-			   aspect ratio. For example,
-			       -s 300:-1
-			   will set the width of the output image to 300px and
+			   aspect ratio.
+			       -s 320:-1
+			   will set the width of the output image to 320px and
 			   will calculate the height of the output image
 			   according to the aspect ratio of the input image.
+ -t, --title=<title>	   Specify webm title. Defaults to <audio>.
 
- -t, --title=<title>	   Specify webm title. Defaults to <image>.
  -h, --help  		   Show this help message and exit.
 EOF
 }
@@ -43,8 +48,8 @@ EOF
 # getopt parsing
 OPTS=$(
   getopt -n 'image2webm' \
-	 -o f:ho:s:t: \
-	 --long ab:,vb:,crf:,format:,help,output:,scale:,title: -- "$@"
+	 -o e:ho:s:t: \
+	 --long ab:,vb:,crf:,encoder:,help,output:,scale:,title: -- "$@"
 )
 if [ $? != 0 ]; then
   echo "Try 'image2webm --help' for more information."
@@ -54,14 +59,14 @@ eval set -- "$OPTS"
 
 while : ; do
   case "$1" in
-    -h | --help )   usage;              exit 0;;
-    --ab )          AUDIO_BITRATE="$2"; shift 2;;
-    --vb )          VIDEO_BITRATE="$2"; shift 2;;
-    --crf )         CRF="$2";           shift 2;;
-    -f | --format ) FORMAT="$2";        shift 2;;
-    -o | --output ) OUTPUT="$2";        shift 2;;
-    -s | --scale )  SCALE="$2";         shift 2;;
-    -t | --title )  TITLE="$2";         shift 2;;
+    -h | --help )     usage;        exit 0;;
+    --ab )            B_A="$2";     shift 2;;
+    --vb )            B_V="$2";     shift 2;;
+    --crf )           CRF="$2";     shift 2;;
+    -e | --encoder )  ENC_V="$2";   shift 2;;
+    -o | --output )   OUTPUT="$2";  shift 2;;
+    -s | --scale )    SCALE="$2";   shift 2;;
+    -t | --title )    TITLE="$2";   shift 2;;
     -- ) shift; break;;
     * )  echo "Unexpected option: $1"; exit 1;;
   esac
@@ -79,26 +84,41 @@ EOF
   exit 1
 fi
 
-# set defaults
-if [ -z "$TITLE" ]; then TITLE="${VIDEO//+(*\/|.*)}"; fi
+# build ffmpeg parameters
+shopt -s extglob
+# title
+if [ -z "$TITLE" ]; then TITLE="${AUDIO//+(*\/|.*)}"; fi
+# output
 if [ -z "$OUTPUT" ]; then OUTPUT="${VIDEO%.*}.webm"; fi
+# video bitrate
+B_V="-b:v $B_V"
+# audio bitrate
+if ! [ -z "$B_A" ]; then B_A="-b:a $B_A"; fi
+# crf
+CRF="-crf $CRF"
+# audio encoder
+if [[ "$ENC_V" == "vp8" ]]; then
+  ENC_A="-c:a libvorbis"
+else
+  ENC_A="-c:a libopus"
+fi
+# video encoder
+if [[ "$ENC_V" == "vp8" ]]; then
+  ENC_V="-c:v libvpx -auto-alt-ref 0"
+else
+  ENC_V="-c:v libvpx-vp9"
+fi
+# check if we have to loop image
+FRAMES=$(identify -format "%n\n" "$VIDEO" 2>/dev/null | head -n1)
+if [[ $FRAMES -gt 1 ]]; then LOOP="-ignore_loop 0"; else unset FRAMES; fi
+# shortest
+if ! [ -z "$FRAMES" ]; then SHORTEST="-shortest"; fi
+# scale
+if ! [ -z "$SCALE" ]; then SCALE="-vf scale=$SCALE"; fi
 
 
-# TODO
-ffmpeg -i 
-
-
-# sanity test
-# ./image2webm --ab 1 --vb 2 --crf 3 -f 4 -o 5 -s y -t z --format 3 --output 4 --scale 5 --title 6 a b
-# 123456ab
-# ./image2webm --ab 1 --vb 2 --crf 3 -f 4 -s y -t z --format 3 --scale 5 --title 6 a.gif b.mp3
-# 123a.webm56a.gifb.mp3
-# echo "    ab: $AUDIO_BITRATE
-#     vb: $VIDEO_BITRATE
-#    crf: $CRF
-# format: $FORMAT
-# output: $OUTPUT
-#  scale: $SCALE
-#  title: $TITLE
-#  video: $VIDEO
-#  audio: $AUDIO"
+ffmpeg -i "${VIDEO}" -pass 1 \
+       $ENC_V $B_V $CRF -f null /dev/null && \
+  ffmpeg -i "${AUDIO}" $LOOP -i "${VIDEO}" -pass 2 \
+	 $ENC_V $B_V $CRF $SCALE $ENC_A $B_A $SHORTEST \
+	 -metadata "title=$TITLE" "${OUTPUT}"

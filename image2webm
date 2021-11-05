@@ -87,7 +87,7 @@ fi
 # build ffmpeg parameters
 shopt -s extglob
 # title
-if [ -z "$TITLE" ]; then T="${AUDIO//+(*\/|.*)}"; fi
+if [ -z "$TITLE" ]; then T=${AUDIO##*/}; T=${T%.*}; fi
 # output
 if [ -z "$OUTPUT" ]; then O="${VIDEO%.*}.webm"; fi
 # video bitrate

@@ -10,14 +10,13 @@
 
 VIDEO=
 AUDIO=
-B_V=0
-B_A=
-CRF=30
-ENC_V="vp9"
+VIDEO_BITRATE=0
+AUDIO_BITRATE=
+CRF_VALUE=20
+VIDEO_ENCODER="vp9"
 OUTPUT=
 SCALE=
 TITLE=
-FUDGE_DUR=0
 
 
 usage() {
@@ -27,7 +26,7 @@ Usage:  image2webm [options] image audio
 Options:
  --ab <bitrate>		   Set audio bitrate.
  --vb <bitrate>		   Set video bitrate. Defaults to CQ mode if unset.
- --crf 			   Set CRF value between 4-63. Defaults to 30.
+ --crf 			   Set CRF value between 0-50. Defaults to 20.
  -e, --encoder={vp8|vp9}   Specify video encoder. Defaults to vp9.
  -o, --output=<file>       Place output into <file>. Defaults to placing
      	       		   <image>.webm in the current directory.
@@ -60,14 +59,14 @@ eval set -- "$OPTS"
 
 while : ; do
   case "$1" in
-    -h | --help )     usage;        exit 0;;
-    --ab )            B_A="$2";     shift 2;;
-    --vb )            B_V="$2";     shift 2;;
-    --crf )           CRF="$2";     shift 2;;
-    -e | --encoder )  ENC_V="$2";   shift 2;;
-    -o | --output )   OUTPUT="$2";  shift 2;;
-    -s | --scale )    SCALE="$2";   shift 2;;
-    -t | --title )    TITLE="$2";   shift 2;;
+    -h | --help )     usage;                  exit 0;;
+    --ab )            AUDIO_BITRATE="$2";    shift 2;;
+    --vb )            VIDEO_BITRATE="$2";    shift 2;;
+    --crf )           CRF_VALUE="$2";        shift 2;;
+    -e | --encoder )  VIDEO_ENCODER="$2";    shift 2;;
+    -o | --output )   OUTPUT="$2";           shift 2;;
+    -s | --scale )    SCALE="$2";            shift 2;;
+    -t | --title )    TITLE="$2";            shift 2;;
     -- ) shift; break;;
     * )  echo "Unexpected option: $1"; exit 1;;
   esac
@@ -88,25 +87,23 @@ fi
 # build ffmpeg parameters
 shopt -s extglob
 # title
-if [ -z "$TITLE" ]; then TITLE="${AUDIO//+(*\/|.*)}"; fi
+if [ -z "$TITLE" ]; then T="${AUDIO//+(*\/|.*)}"; fi
 # output
-if [ -z "$OUTPUT" ]; then OUTPUT="${VIDEO%.*}.webm"; fi
-# fudge duration
-if [[ "$ENC_V" == "vp8" ]]; then FUDGE_DUR=1; fi
+if [ -z "$OUTPUT" ]; then O="${VIDEO%.*}.webm"; fi
 # video bitrate
-B_V="-b:v $B_V"
+B_V="-b:v $VIDEO_BITRATE"
 # audio bitrate
-if ! [ -z "$B_A" ]; then B_A="-b:a $B_A"; fi
+if ! [ -z "$AUDIO_BITRATE" ]; then B_A="-b:a $B_A"; fi
 # crf
-CRF="-crf $CRF -qmin 0 -qmax 50"
+CRF="-crf $CRF_VALUE -qmin 0 -qmax 50"
 # audio encoder
-if [[ "$ENC_V" == "vp8" ]]; then
+if [[ "$VIDEO_ENCODER" == "vp8" ]]; then
   ENC_A="-c:a libvorbis"
 else
   ENC_A="-c:a libopus"
 fi
 # video encoder
-if [[ "$ENC_V" == "vp8" ]]; then
+if [[ "$VIDEO_ENCODER" == "vp8" ]]; then
   ENC_V="-c:v libvpx -auto-alt-ref 0"
 else
   ENC_V="-c:v libvpx-vp9"
@@ -124,15 +121,16 @@ ffmpeg -i "${VIDEO}" -pass 1 \
        $ENC_V $B_V $CRF -f null /dev/null && \
   ffmpeg -i "${AUDIO}" $LOOP -i "${VIDEO}" -pass 2 \
 	 $ENC_V $B_V $CRF $SCALE $ENC_A $B_A $SHORTEST \
-	 -metadata "title=$TITLE" "${OUTPUT}"
+	 -metadata "title=$T" "${O}"
+
 
 # fudge duration metadata if audio file is greater than 300s
 DURATION=$(ffprobe -v error -show_entries format=duration \
-		   -of compact=nk=1:p=0 "${OUTPUT}")
-if (( FUDGE_DUR )) && [[ ${DURATION%.*} -ge 300 ]]; then
+		   -of compact=nk=1:p=0 "${O}")
+if [[ "$VIDEO_ENCODER" == "vp8" ]] && [[ ${DURATION%.*} -ge 300 ]]; then
   echo "WebM duration longer than 5 mins, fudging metadata with dd"
-  OFFSET=$(LANG=C grep -obUaP -m 1 "\x44\x89" "${OUTPUT}")
+  OFFSET=$(LANG=C grep -obUaP -m 1 "\x44\x89" "${O}")
   OFFSET=${OFFSET%:*}
   printf '\x44\x89\x88\x41\x12\x4F\x80' | \
-    dd of="${OUTPUT}" bs=1 seek=$OFFSET count=7 conv=notrunc status=none
+    dd of="${O}" bs=1 seek=$OFFSET count=7 conv=notrunc
 fi

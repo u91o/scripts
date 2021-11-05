@@ -17,6 +17,7 @@ ENC_V="vp9"
 OUTPUT=
 SCALE=
 TITLE=
+FUDGE_DUR=0
 
 
 usage() {
@@ -90,12 +91,14 @@ shopt -s extglob
 if [ -z "$TITLE" ]; then TITLE="${AUDIO//+(*\/|.*)}"; fi
 # output
 if [ -z "$OUTPUT" ]; then OUTPUT="${VIDEO%.*}.webm"; fi
+# fudge duration
+if [[ "$ENC_V" == "vp8" ]]; then FUDGE_DUR=1; fi
 # video bitrate
 B_V="-b:v $B_V"
 # audio bitrate
 if ! [ -z "$B_A" ]; then B_A="-b:a $B_A"; fi
 # crf
-CRF="-crf $CRF"
+CRF="-crf $CRF -qmin 0 -qmax 50"
 # audio encoder
 if [[ "$ENC_V" == "vp8" ]]; then
   ENC_A="-c:a libvorbis"
@@ -122,3 +125,14 @@ ffmpeg -i "${VIDEO}" -pass 1 \
   ffmpeg -i "${AUDIO}" $LOOP -i "${VIDEO}" -pass 2 \
 	 $ENC_V $B_V $CRF $SCALE $ENC_A $B_A $SHORTEST \
 	 -metadata "title=$TITLE" "${OUTPUT}"
+
+# fudge duration metadata if audio file is greater than 300s
+DURATION=$(ffprobe -v error -show_entries format=duration \
+		   -of compact=nk=1:p=0 "${OUTPUT}")
+if (( FUDGE_DUR )) && [[ ${DURATION%.*} -ge 300 ]]; then
+  echo "WebM duration longer than 5 mins, fudging metadata with dd"
+  OFFSET=$(LANG=C grep -obUaP -m 1 "\x44\x89" "${OUTPUT}")
+  OFFSET=${OFFSET%:*}
+  printf '\x44\x89\x88\x41\x12\x4F\x80' | \
+    dd of="${OUTPUT}" bs=1 seek=$OFFSET count=7 conv=notrunc status=none
+fi

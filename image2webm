@@ -85,15 +85,14 @@ EOF
 fi
 
 # build ffmpeg parameters
-shopt -s extglob
 # title
-if [ -z "$TITLE" ]; then T=${AUDIO##*/}; T=${T%.*}; fi
+if [ -z "$TITLE" ]; then T="${AUDIO##*/}"; T="${T%.*}"; else T="$TITLE"; fi
 # output
-if [ -z "$OUTPUT" ]; then O="${VIDEO%.*}.webm"; fi
+if [ -z "$OUTPUT" ]; then O="${VIDEO%.*}.webm"; else O="$OUTPUT"; fi
 # video bitrate
 B_V="-b:v $VIDEO_BITRATE"
 # audio bitrate
-if ! [ -z "$AUDIO_BITRATE" ]; then B_A="-b:a $B_A"; fi
+if ! [ -z "$AUDIO_BITRATE" ]; then B_A="-b:a $AUDIO_BITRATE"; fi
 # crf
 CRF="-crf $CRF_VALUE -qmin 0 -qmax 50"
 # audio encoder

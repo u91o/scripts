@@ -1,0 +1,15 @@
+#!/bin/bash
+#
+# miscellaneous bash functions
+
+function eol {
+  # print input at the end of the current line
+
+  # move cursor to the right by n (width of terminal) spaces
+  tput cuf $(tput cols)
+  # move cursor to the left by n (length of param1) spaces
+  tput cub ${#1}
+  echo $1
+}
+
+eol "climber's high"

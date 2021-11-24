@@ -1,0 +1,13 @@
+#!/bin/bash
+#
+# Downloads all the files in a sourceforge folder
+# Takes a sourceforge RSS url as input
+
+if [ -z $1 ]; then
+  cat <<EOF
+Usage:  sourceforge-dl url
+EOF
+else
+    curl -s $1 | grep -o 'https://sourceforge.net/.*download' | uniq |
+      while read url; do aria2c $url; done
+fi
